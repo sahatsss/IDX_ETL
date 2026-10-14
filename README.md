@@ -2,8 +2,6 @@
 
 Pipeline ETL harian untuk data harga saham Bursa Efek Indonesia (IDX) ke PostgreSQL, dengan validasi kualitas data dan query analitik.
 
-> Status: 🚧 dalam pengerjaan
-
 ## Tujuan proyek
 1. Membangun ETL yang **idempotent** (aman dijalankan ulang tanpa duplikasi data).
 2. Menerapkan **kontrol kualitas data** yang terdokumentasi (mirip kontrol di audit IT).
@@ -49,3 +47,8 @@ python -m idx_pipeline.main                      # load harian (default: 7 hari 
 ## Keterbatasan yang sudah diketahui
 - Data yfinance tidak resmi; bisa ada tanggal hilang atau penyesuaian harga (corporate action).
 - Daftar saham di `config/tickers.csv` hanya contoh — komposisi LQ45 berubah tiap periode, verifikasi sendiri.
+
+## Menjalankan Conda
+
+- Masuk ke direktori projek IDX_ETL
+-  jalankan "conda activate IDX_ETL" 

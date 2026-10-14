@@ -18,3 +18,7 @@ Ini yang akan kamu baca ulang sebelum wawancara.
 
 ## 004 – Data bermasalah: dicatat, tidak langsung dibuang
 - **Alasan**: (isi sendiri — kaitkan dengan audit trail)
+
+## 005 – Jadwal pengambilan data
+- Jadwalkan ETL setelah pasar tutup, misalnya pukul 17:00 WIB
+- **Alasan**: (isi sendiri)
