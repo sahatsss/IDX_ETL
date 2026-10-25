@@ -1,13 +1,16 @@
 """Memuat data ke PostgreSQL secara idempotent (upsert)."""
 import pandas as pd
+from psycopg2.extras import execute_values
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-UPSERT_HARGA = text("""
-    INSERT INTO harga_harian
-        (kode, tanggal, harga_buka, harga_tertinggi, harga_terendah, harga_tutup, volume)
-    VALUES
-        (:kode, :tanggal, :harga_buka, :harga_tertinggi, :harga_terendah, :harga_tutup, :volume)
+# Dipakai dengan psycopg2 execute_values: `VALUES %s` diganti banyak baris sekaligus,
+# (..), (..), ... sebanyak UKURAN_HALAMAN per perintah, bukan satu perintah per baris.
+KOLOM_HARGA = ["kode", "tanggal", "harga_buka", "harga_tertinggi", "harga_terendah", "harga_tutup", "volume"]
+UKURAN_HALAMAN = 1000
+UPSERT_HARGA = f"""
+    INSERT INTO harga_harian ({", ".join(KOLOM_HARGA)})
+    VALUES %s
     ON CONFLICT (kode, tanggal) DO UPDATE SET
         harga_buka      = EXCLUDED.harga_buka,
         harga_tertinggi = EXCLUDED.harga_tertinggi,
@@ -15,7 +18,7 @@ UPSERT_HARGA = text("""
         harga_tutup     = EXCLUDED.harga_tutup,
         volume          = EXCLUDED.volume,
         dimuat_pada     = now()
-""")
+"""
 
 UPSERT_EMITEN = text("""
     INSERT INTO emiten (kode, nama, sektor) VALUES (:kode, :nama, :sektor)
@@ -41,10 +44,25 @@ def muat_emiten(engine: Engine, emiten: pd.DataFrame) -> None:
 
 
 def muat_harga(engine: Engine, df: pd.DataFrame) -> int:
+    """Upsert seluruh baris dalam satu transaksi, dikirim per halaman UKURAN_HALAMAN baris.
+
+    Syarat: tidak boleh ada (kode, tanggal) ganda dalam satu batch. PostgreSQL menolak ON CONFLICT DO UPDATE
+    yang mengenai baris yang sama dua kali dalam satu perintah. Aturan `duplikat` di validate.py menjamin ini.
+    """
     if df.empty:
         return 0
-    with engine.begin() as conn:
-        conn.execute(UPSERT_HARGA, _nullable(df))
+    baris = [tuple(b[k] for k in KOLOM_HARGA) for b in _nullable(df[KOLOM_HARGA])]
+    # execute_values adalah fitur psycopg2, jadi pakai koneksi DBAPI mentah di bawah engine SQLAlchemy.
+    conn = engine.raw_connection()
+    try:
+        with conn.cursor() as cur:
+            execute_values(cur, UPSERT_HARGA, baris, page_size=UKURAN_HALAMAN)
+        conn.commit()          # semua halaman masuk, atau...
+    except Exception:
+        conn.rollback()        # ...tidak ada sama sekali (tetap satu transaksi seperti sebelumnya)
+        raise
+    finally:
+        conn.close()           # mengembalikan koneksi ke pool
     return len(df)
 
 
