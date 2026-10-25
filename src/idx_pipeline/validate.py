@@ -10,7 +10,8 @@ Perlakuan per aturan (lihat DECISIONS.md #004):
 - BUANG + catat : harga_tidak_positif, ohlc_tidak_konsisten, volume_negatif, duplikat, tanggal_masa_depan
                   (datanya pasti salah, jadi tidak boleh masuk analisis)
 - SIMPAN + catat: lonjakan_ekstrem
-                  (bisa saja nyata, mis. stock split karena harga disimpan tanpa adjust)
+                  (bisa saja nyata, mis. stock split karena harga disimpan tanpa adjust).
+                  Batas ARA/ARB mengikuti periode aturan BEI yang berlaku di tanggal transaksi.
 
 Urutan aturan penting: baris yang sudah dibuang oleh aturan sebelumnya tidak diperiksa lagi,
 sehingga satu kesalahan tidak tercatat berkali-kali dan perbandingan dengan NaN tidak perlu dipikirkan.
@@ -22,27 +23,41 @@ import pandas as pd
 
 KOLOM_HARGA = ["harga_buka", "harga_tertinggi", "harga_terendah", "harga_tutup"]
 
-# Batas auto rejection BEI berdasarkan harga acuan (harga tutup hari sebelumnya):
-# (harga_acuan_minimum, persentase). Dipakai simetris untuk naik (ARA) maupun turun (ARB),
-# dengan angka ARA sebagai batas terluas, agar aturan hanya menandai perubahan yang
-# memang mustahil terjadi dalam satu hari perdagangan normal.
-# ⚠️ Verifikasi ke peraturan BEI terbaru; batas ARB pernah diubah beberapa kali (2020, 2023, 2025).
-BATAS_AUTO_REJECTION = [
-    (5000, 0.20),
-    (200, 0.25),
-    (0, 0.35),
+# Batas auto rejection (AR) BEI per periode berlaku, berdasarkan harga acuan (harga tutup kemarin).
+# Setiap rentang: (harga_acuan_lebih_dari, ARA, ARB), dicek dari harga tertinggi.
+# Nilai None = batas nominal Rp1 (rentang Rp1-Rp10), bukan persentase.
+# Sumber: Siaran Pers BEI No. 083/BEI.SPR/09-2026 (21 Sep 2026), SK Direksi BEI Kep-00136/BEI/09-2026
+#         https://www.idx.co.id/id/berita/siaran-pers/2704
+_SIMETRIS = [(5000, 0.20, 0.20), (200, 0.25, 0.25), (0, 0.35, 0.35)]
+_ARB_15 = [(5000, 0.20, 0.15), (200, 0.25, 0.15), (0, 0.35, 0.15)]
+_RP1 = [(0, None, None)]   # Rp1-Rp10, berlaku sejak harga minimum turun ke Rp1
+
+PERIODE_AUTO_REJECTION = [
+    # (berlaku_mulai, rentang). Tanggal sebelum periode pertama memakai periode pertama.
+    # ⚠️ VERIFIKASI: tanggal mulai ARB simetris (2023) dan ARB asimetris 15% (2025) belum bersumber resmi.
+    (date(2023, 9, 4), _SIMETRIS),
+    (date(2025, 4, 8), _ARB_15),
+    (date(2026, 9, 28), _ARB_15[:2] + [(10, 0.35, 0.15)] + _RP1),
+    (date(2027, 1, 1), _SIMETRIS[:2] + [(10, 0.35, 0.35)] + _RP1),
 ]
 # Kelonggaran untuk pembulatan fraksi harga (tick size) dan selisih kecil data yfinance.
 TOLERANSI_LONJAKAN = 0.01
 
 
-def _batas_auto_rejection(harga_acuan: float) -> float:
-    if pd.isna(harga_acuan):
-        return float("nan")
-    for minimum, persen in BATAS_AUTO_REJECTION:
-        if harga_acuan >= minimum:
-            return persen
-    return BATAS_AUTO_REJECTION[-1][1]
+def _batas_auto_rejection(harga_acuan: float, tanggal: date) -> tuple[float, float]:
+    """Kembalikan (ARA, ARB) sebagai pecahan (0.25 = 25%) untuk harga acuan dan tanggal transaksi."""
+    if pd.isna(harga_acuan) or harga_acuan <= 0:
+        return float("nan"), float("nan")
+    rentang = PERIODE_AUTO_REJECTION[0][1]
+    for berlaku_mulai, r in PERIODE_AUTO_REJECTION:
+        if tanggal >= berlaku_mulai:
+            rentang = r
+    for lebih_dari, ara, arb in rentang:
+        if harga_acuan > lebih_dari:      # aturan BEI: ">Rp200 - <=Rp5.000", jadi pakai >, bukan >=
+            if ara is None:               # batas nominal Rp1 diubah ke persentase dari harga acuan
+                return 1 / harga_acuan, 1 / harga_acuan
+            return ara, arb
+    return float("nan"), float("nan")
 
 
 def _catat(isu: list[dict], dilanggar: pd.DataFrame, aturan: str,
@@ -111,11 +126,18 @@ def validasi(df: pd.DataFrame, hari_ini: date | None = None) -> tuple[pd.DataFra
     urut = bersih.sort_values(["kode", "tanggal"])
     acuan = urut.groupby("kode")["harga_tutup"].shift(1)
     perubahan = urut["harga_tutup"] / acuan - 1
-    batas = acuan.map(_batas_auto_rejection)
+    # Batas dipilih per baris: tergantung harga acuan, tanggal (periode aturan), dan arah perubahan
+    # (naik dibandingkan dengan ARA, turun dengan ARB, karena keduanya bisa berbeda / asimetris).
+    tanggal_urut = pd.to_datetime(urut["tanggal"]).dt.date
+    batas = pd.Series(
+        [ara if p >= 0 else arb
+         for p, (ara, arb) in zip(perubahan, map(_batas_auto_rejection, acuan, tanggal_urut))],
+        index=urut.index, dtype=float,
+    )
     mask = perubahan.abs() > batas + TOLERANSI_LONJAKAN   # NaN (tanpa acuan) -> False
     dilanggar = urut[mask].assign(_acuan=acuan[mask], _perubahan=perubahan[mask], _batas=batas[mask])
     _catat(isu, dilanggar, "lonjakan_ekstrem",
            lambda b: (f"tutup {b['_acuan']} -> {b['harga_tutup']} ({b['_perubahan']:+.1%}), "
-                      f"batas auto rejection ±{b['_batas']:.0%}"))
+                      f"batas {'ARA' if b['_perubahan'] >= 0 else 'ARB'} {b['_batas']:.0%}"))
 
     return bersih, isu

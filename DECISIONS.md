@@ -3,9 +3,6 @@
 Format: keputusan → alternatif yang dipertimbangkan → alasan → konsekuensi.
 Ini yang akan kamu baca ulang sebelum wawancara.
 
-> ⚠️ DRAF dibuat dengan bantuan Claude Code (16 Okt 2026). Baca, sesuaikan dengan bahasamu sendiri,
-> dan hapus catatan ini setelah kamu yakin bisa menjelaskan setiap poin tanpa melihat teks.
-
 ## 001 – Sumber data: yfinance
 - **Keputusan**: mengambil data OHLCV harian saham IDX dari yfinance (ticker berakhiran `.JK`).
 - **Alternatif**: scraping situs IDX, file Ringkasan Perdagangan IDX manual, API berbayar.
@@ -75,8 +72,29 @@ Ini yang akan kamu baca ulang sebelum wawancara.
   - Isu dicatat ulang setiap run (satu set per `run_id`). Ini disengaja (jejak per run), tapi query laporan harus mem-filter run terakhir.
   - Keterbatasan `lonjakan_ekstrem`: baris pertama tiap saham dalam satu batch tidak dicek karena harga kemarin ada di database,
     bukan di DataFrame.
-  - Batas ARB/ARA di `validate.py` (35% / 25% / 20% menurut rentang harga, dipakai simetris + toleransi 1%)
-    **harus diverifikasi ke peraturan BEI terbaru** (sumber: ...isi sendiri...).
+- **Batas ARA/ARB untuk `lonjakan_ekstrem`: mengikuti periode aturan BEI** (`PERIODE_AUTO_REJECTION` di `validate.py`).
+  - Batas dipilih berdasarkan **tanggal transaksi**, **harga acuan** (tutup kemarin), dan **arah** (naik → ARA, turun → ARB),
+    ditambah toleransi 1% untuk pembulatan fraksi harga.
+
+    | Berlaku mulai | Rp1–Rp10 | Rp11/50–≤Rp200 | >Rp200–≤Rp5.000 | >Rp5.000 |
+    |---|---|---|---|---|
+    | 4 Sep 2023 ⚠️ | – | 35% / 35% | 25% / 25% | 20% / 20% |
+    | 8 Apr 2025 ⚠️ | – | 35% / 15% | 25% / 15% | 20% / 15% |
+    | 28 Sep 2026 | Rp1 / Rp1 | 35% / 15% | 25% / 15% | 20% / 15% |
+    | 1 Jan 2027 | Rp1 / Rp1 | 35% / 35% | 25% / 25% | 20% / 20% |
+
+    (format: ARA / ARB)
+  - **Sumber**: Siaran Pers BEI No. 083/BEI.SPR/09-2026, 21 Sep 2026
+    (SK Direksi BEI Kep-00136/BEI/09-2026, perubahan Peraturan II-A),
+    https://www.idx.co.id/id/berita/siaran-pers/2704. Siaran pers ini menjadi sumber baris 28 Sep 2026 dan 1 Jan 2027,
+    serta menyatakan ARB 15% asimetris adalah ketentuan "saat ini".
+  - ⚠️ **Belum bersumber**: tanggal mulai ARB simetris (2023) dan ARB asimetris 15% (2025). Cari siaran pers BEI-nya.
+  - **Alternatif yang ditolak**:
+    - Satu batas simetris terluas untuk semua tanggal: tidak pernah salah menandai, tapi penurunan 16–25% di periode ARB 15% lolos.
+    - Hanya aturan terbaru untuk semua tanggal: data historis yang sah (mis. ADRO −24,8% pada Nov 2024, saat ARB masih 25%) salah ditandai.
+  - Batas rentang memakai `>` sesuai teks aturan (">Rp200 – ≤Rp5.000"): harga acuan tepat Rp5.000 memakai 25%, bukan 20%.
+  - Rentang Rp1–Rp10 memakai batas nominal Rp1, sehingga dikonversi menjadi persentase `1 / harga_acuan`.
+  - Hasil uji pada 7.290 baris (Okt 2023 – Okt 2026, 10 saham): 0 isu, sehingga tidak ada data sah yang salah ditandai.
 
 ## 005 – Jadwal pengambilan data
 - **Keputusan**: ETL dijadwalkan setelah pasar tutup, hari Senin–Jumat pukul 17:00 WIB.

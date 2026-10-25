@@ -1,5 +1,5 @@
 """Test untuk aturan validasi. Satu kelompok test per aturan."""
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -15,8 +15,8 @@ def baris(**ubah):
     return b
 
 
-def jalankan(*daftar_baris):
-    return validasi(pd.DataFrame(list(daftar_baris)), hari_ini=HARI_INI)
+def jalankan(*daftar_baris, hari_ini=HARI_INI):
+    return validasi(pd.DataFrame(list(daftar_baris)), hari_ini=hari_ini)
 
 
 def aturan_dari(isu):
@@ -139,11 +139,18 @@ def test_tanggal_hari_ini_valid():
 
 # --- lonjakan_ekstrem --------------------------------------------------------
 
-def dua_hari(tutup_kemarin, tutup_hari_ini, kode="BBCA"):
+def dua_hari(tutup_kemarin, tutup_hari_ini, kode="BBCA", kemarin=date(2024, 1, 2)):
     def b(tgl, tutup):
         return baris(kode=kode, tanggal=tgl, harga_buka=tutup, harga_tertinggi=tutup,
                      harga_terendah=tutup, harga_tutup=tutup)
-    return b(date(2024, 1, 2), tutup_kemarin), b(date(2024, 1, 3), tutup_hari_ini)
+    return b(kemarin, tutup_kemarin), b(kemarin + timedelta(days=1), tutup_hari_ini)
+
+
+# Contoh tanggal di tiap periode aturan auto rejection (lihat PERIODE_AUTO_REJECTION).
+TGL_SIMETRIS_2024 = date(2024, 6, 3)
+TGL_ARB15_2026 = date(2026, 10, 5)
+TGL_SIMETRIS_2027 = date(2027, 1, 4)
+HARI_INI_JAUH = date(2030, 1, 1)    # agar tanggal 2026/2027 tidak dianggap masa depan
 
 
 def test_lonjakan_ditandai_tapi_tetap_dimuat():
@@ -175,3 +182,32 @@ def test_lonjakan_tidak_membandingkan_antar_kode():
     _, bbri = dua_hari(1_000, 1_000, kode="BBRI")
     _, isu = jalankan(bbca, bbri)
     assert isu == []
+
+
+def test_batas_rentang_tepat_5000_memakai_25_persen():
+    # aturan BEI: ">Rp200 - <=Rp5.000" = 25%, jadi acuan tepat 5.000 belum masuk rentang 20%
+    _, isu = jalankan(*dua_hari(5_000, 6_200))             # +24% < 25%
+    assert isu == []
+
+
+def test_arb_asimetris_15_persen_di_2026():
+    _, isu_turun = jalankan(*dua_hari(4_000, 3_300, kemarin=TGL_ARB15_2026), hari_ini=HARI_INI_JAUH)
+    _, isu_naik = jalankan(*dua_hari(4_000, 4_900, kemarin=TGL_ARB15_2026), hari_ini=HARI_INI_JAUH)
+    assert aturan_dari(isu_turun) == ["lonjakan_ekstrem"]   # -17.5% > ARB 15%
+    assert "ARB 15%" in isu_turun[0]["keterangan"]
+    assert isu_naik == []                                   # +22.5% < ARA 25%
+
+
+def test_penurunan_yang_sama_sah_saat_arb_simetris():
+    _, isu_2024 = jalankan(*dua_hari(4_000, 3_300, kemarin=TGL_SIMETRIS_2024), hari_ini=HARI_INI_JAUH)
+    _, isu_2027 = jalankan(*dua_hari(4_000, 3_300, kemarin=TGL_SIMETRIS_2027), hari_ini=HARI_INI_JAUH)
+    assert isu_2024 == []                                   # -17.5% < ARB 25%
+    assert isu_2027 == []
+
+
+def test_rentang_rp1_sampai_rp10_memakai_batas_nominal():
+    # sejak 28 Sep 2026: harga Rp1-Rp10 hanya boleh bergerak Rp1 per hari
+    _, isu_dua_rupiah = jalankan(*dua_hari(5, 7, kemarin=TGL_ARB15_2026), hari_ini=HARI_INI_JAUH)
+    _, isu_satu_rupiah = jalankan(*dua_hari(5, 6, kemarin=TGL_ARB15_2026), hari_ini=HARI_INI_JAUH)
+    assert aturan_dari(isu_dua_rupiah) == ["lonjakan_ekstrem"]
+    assert isu_satu_rupiah == []
