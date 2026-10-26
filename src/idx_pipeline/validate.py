@@ -34,7 +34,9 @@ _RP1 = [(0, None, None)]   # Rp1-Rp10, berlaku sejak harga minimum turun ke Rp1
 
 PERIODE_AUTO_REJECTION = [
     # (berlaku_mulai, rentang). Tanggal sebelum periode pertama memakai periode pertama.
-    # ⚠️ VERIFIKASI: tanggal mulai ARB simetris (2023) dan ARB asimetris 15% (2025) belum bersumber resmi.
+    # Dua periode pertama (sebelum 28 Sep 2026): ketentuan BEI/OJK yang berlaku saat itu; dokumen spesifiknya
+    # belum dicantumkan. Didukung data: dengan ARB 15% untuk semua tanggal, 11 penurunan 16-25% tertandai dan
+    # semuanya sebelum Mar 2025 (saat ARB masih simetris). Lihat DECISIONS.md #004.
     (date(2023, 9, 4), _SIMETRIS),
     (date(2025, 4, 8), _ARB_15),
     (date(2026, 9, 28), _ARB_15[:2] + [(10, 0.35, 0.15)] + _RP1),
