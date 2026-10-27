@@ -27,6 +27,12 @@ python -m idx_pipeline.main                      # load harian (default: 7 hari 
 ```
 (Jalankan dari folder `src/` atau set `PYTHONPATH=src`.)
 
+Membuat view analitik (sekali, atau setiap file di `sql/analytics/` diubah) lalu membuka dashboard:
+```bash
+for f in sql/analytics/0*.sql; do docker compose exec -T db psql -U idx -d idx -v ON_ERROR_STOP=1 -q < "$f"; done
+streamlit run dashboard/app.py        # buka http://localhost:8501
+```
+
 ## Roadmap
 - [ ] **Fase 1 – Fondasi**: Docker + PostgreSQL jalan, skema dibuat, ETL bisa load 10 saham.
 - [ ] **Fase 2 – Idempotency & logging**: jalankan ETL 2x untuk tanggal yang sama → jumlah baris tidak berubah. Setiap run tercatat di `log_etl`.

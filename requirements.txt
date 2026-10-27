@@ -4,3 +4,5 @@ SQLAlchemy>=2.0,<2.1
 psycopg2-binary>=2.9
 python-dotenv>=1.0
 pytest>=8.0
+streamlit>=1.40
+plotly>=5.20
