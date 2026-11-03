@@ -27,11 +27,32 @@ python -m idx_pipeline.main                      # load harian (default: 7 hari 
 ```
 (Jalankan dari folder `src/` atau set `PYTHONPATH=src`.)
 
-Membuat view analitik (sekali, atau setiap file di `sql/analytics/` diubah) lalu membuka dashboard:
+Membuat/memperbarui tabel dan view analitik (aman diulang), lalu membuka dashboard:
 ```bash
-for f in sql/analytics/0*.sql; do docker compose exec -T db psql -U idx -d idx -v ON_ERROR_STOP=1 -q < "$f"; done
-streamlit run dashboard/app.py        # buka http://localhost:8501
+python -m idx_pipeline.setup_db
+python -m streamlit run dashboard/app.py        # buka http://localhost:8501
 ```
+
+## Deploy (database cloud + jadwal + dashboard online)
+```
+GitHub Actions (cron 17:00 WIB) ──► ETL ──► Neon (PostgreSQL cloud) ◄── Streamlit Community Cloud (dashboard)
+```
+1. **Neon**: buat proyek di https://neon.tech (region Singapore), salin connection string `postgresql://...?sslmode=require`.
+2. **Isi database cloud dari nol** (dari laptop, sekali saja). PowerShell:
+   ```powershell
+   $env:PYTHONPATH="src"; $env:DATABASE_URL="<connection string Neon>"
+   python -m idx_pipeline.setup_db
+   python -m idx_pipeline.main --start 2023-10-01
+   Remove-Item Env:DATABASE_URL          # kembali ke database lokal
+   ```
+3. **GitHub Actions**: repo → Settings → Secrets and variables → Actions → New repository secret
+   `DATABASE_URL` = connection string Neon. Workflow `.github/workflows/etl.yml` berjalan Senin–Jumat 17:00 WIB
+   (test dulu, lalu ETL); bisa juga dijalankan manual dari tab Actions → "ETL harian" → Run workflow.
+4. **Streamlit Community Cloud**: https://share.streamlit.io → New app → repo ini, branch `main`,
+   main file `dashboard/app.py` → Advanced settings → Secrets:
+   ```toml
+   DATABASE_URL = "<connection string Neon>"
+   ```
 
 ## Roadmap
 - [ ] **Fase 1 – Fondasi**: Docker + PostgreSQL jalan, skema dibuat, ETL bisa load 10 saham.
@@ -57,4 +78,4 @@ streamlit run dashboard/app.py        # buka http://localhost:8501
 ## Menjalankan Conda
 
 - Masuk ke direktori projek IDX_ETL
--  jalankan "conda activate IDX_ETL" 
+- jalankan `conda activate idx-etl`

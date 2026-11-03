@@ -213,3 +213,53 @@ Ini yang akan kamu baca ulang sebelum wawancara.
   - Idempotency tetap terbukti: load dijalankan dua kali, `count(*)` tetap 32.521.
   - Tidak menambah index: primary key `(kode, tanggal)` sudah menjadi index yang sesuai pola `PARTITION BY kode ORDER BY tanggal`,
     dan semua view < 260 ms.
+
+## 013 – Dashboard: Streamlit multi-halaman + Plotly
+- **Keputusan**: `dashboard/app.py` + 6 halaman di `dashboard/halaman/` (Ringkasan, Detail saham, Sektor, Risiko,
+  Volume spike, Kualitas data), grafik dengan Plotly. Semua angka dibaca dari view (#008); dashboard tidak menghitung sendiri.
+- **Alternatif**:
+  - Grafik Altair bawaan Streamlit: tanpa dependency tambahan, tapi candlestick dan subplot (harga + volume + drawdown) lebih repot.
+  - Satu halaman dengan tab: lebih sederhana, tapi satu file panjang dan semua query jalan sekaligus.
+  - Tools BI (Metabase, Looker Studio): tanpa kode, tapi kurang menunjukkan kemampuan Python dan lebih sulit dideploy gratis.
+- **Alasan**:
+  - Plotly interaktif (zoom, hover) dan mendukung candlestick + subplot dengan sumbu waktu bersama.
+  - Multi-halaman memisahkan tiap pertanyaan analitik; setiap halaman hanya meng-query 1–2 view yang dibutuhkan.
+  - Halaman **Kualitas data** menampilkan `log_etl` dan `data_quality_issue`: dashboard tidak hanya menunjukkan hasil,
+    tapi juga **bukti kontrol** (setiap run tercatat, setiap isu bisa ditelusuri), relevan untuk tech risk.
+- **Konsekuensi**:
+  - Dependency baru: `streamlit`, `plotly`.
+  - Hasil query di-cache 10 menit (`st.cache_data(ttl=600)`); data baru dari ETL baru terlihat setelah cache kedaluwarsa.
+  - Koneksi dibuat sekali per proses (`st.cache_resource`) dan memakai `config.database_url()` milik ETL,
+    sehingga dashboard dan ETL selalu membaca database yang sama.
+
+## 014 – Deploy: Neon + GitHub Actions + Streamlit Community Cloud
+- **Keputusan**:
+  - Database cloud **Neon** (PostgreSQL serverless, tier gratis 0,5 GB; data saat ini ±5 MB).
+  - Database cloud **dibangun dari nol**: `python -m idx_pipeline.setup_db` (tabel + view) lalu backfill dengan ETL,
+    bukan menyalin database lokal.
+  - ETL terjadwal di **GitHub Actions** (`.github/workflows/etl.yml`), cron `0 10 * * 1-5` (17:00 WIB, #005).
+  - Dashboard di **Streamlit Community Cloud**, membaca database Neon yang sama.
+  - Koneksi dari `DATABASE_URL` (jika di-set), selain itu `POSTGRES_*` lokal. Secret tidak pernah masuk repo.
+- **Alternatif**:
+  - Supabase: gratis juga, tapi koneksi langsung hanya IPv6 (GitHub Actions butuh connection pooler) dan proyek di-pause
+    jika seminggu tidak aktif; fitur tambahannya (auth, API) tidak dipakai.
+  - Menyalin database lokal (`pg_dump`): lebih cepat, tapi tidak membuktikan pipeline bisa dibangun ulang dari nol,
+    dan ikut membawa riwayat run uji coba.
+  - Cron di laptop / server sendiri: tidak jalan saat laptop mati; server berbayar.
+- **Alasan**:
+  - Semua komponen gratis dan tidak bergantung pada laptop menyala.
+  - Membangun ulang dari nol menguji **reproducibility**: repo + secret cukup untuk menghasilkan database yang sama.
+  - Workflow menjalankan **test dulu**, ETL hanya jalan jika semua test lulus; `setup_db` dijalankan setiap run sehingga view
+    di database selalu sama dengan file di repo (idempotent: `IF NOT EXISTS` / `CREATE OR REPLACE`).
+  - `concurrency` mencegah dua run ETL bersamaan; tanggal manual dikirim lewat variabel env, bukan disisipkan ke perintah shell.
+- **Konsekuensi / risiko**:
+  - Yahoo bisa membatasi permintaan dari IP cloud (GitHub runner); dimitigasi retry + backoff (#011), dan run gagal tercatat
+    di `log_etl` serta terlihat di tab Actions.
+  - Neon "tidur" saat tidak dipakai; akses pertama dashboard bisa lebih lambat ±1 detik.
+  - Jadwal GitHub Actions bisa terlambat beberapa menit; repo yang tidak aktif 60 hari bisa membuat jadwal dinonaktifkan GitHub.
+  - Database lokal Docker tetap ada untuk pengembangan; `.env` tidak berisi `DATABASE_URL` agar default tetap lokal.
+    Connection string Neon ditarik dengan Neon CLI (`neon link --no-env-pull`, lalu `neon env pull --file .env.neon`)
+    ke file terpisah yang di-gitignore, bukan ke `.env`.
+  - Aplikasi memakai URL **pooled** (PgBouncer) dari Neon, sesuai rekomendasi Neon untuk trafik aplikasi.
+  - Hasil pembangunan ulang di Neon (3 Nov 2026): `setup_db` membuat 4 tabel + 8 view; backfill 32.836 baris (45 saham,
+    2 Okt 2023 – 3 Nov 2026) dalam 10 detik, 0 isu; run harian dijalankan 2× dan jumlah baris tetap 32.836 (idempotent).
