@@ -50,10 +50,14 @@ def query(sql: str, **params) -> pd.DataFrame:
     """Jalankan SELECT dan kembalikan DataFrame. Hasil di-cache berdasarkan teks SQL + parameter."""
     try:
         df = _query(sql, **params).copy()
-    except OperationalError:
-        # Pesan singkat tanpa membocorkan password; detail lengkap tetap ada di log server.
+    except OperationalError as e:
+        # Pesan singkat tanpa membocorkan password: host + baris pertama pesan driver
+        # (mis. "... failed: FATAL: password authentication failed"); pesan psycopg2 tidak memuat password.
+        baris = [b.strip() for b in str(getattr(e, "orig", e)).splitlines() if b.strip()]
         st.error(f"Tidak bisa terhubung ke database (host: `{_host_tujuan()}`). "
                  "Periksa DATABASE_URL di Secrets / .env, dan pastikan database menyala.")
+        if baris:
+            st.caption(f"Detail: {baris[0]}")
         st.stop()
     # Kolom NUMERIC PostgreSQL terbaca sebagai Decimal (dtype object); ubah ke float agar bisa digrafikkan.
     for kolom in df.columns:
