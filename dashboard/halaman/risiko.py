@@ -64,4 +64,4 @@ with kanan:
         },
         hide_index=True, height=460,
     )
-st.caption("Harga mentah: spin-off / stock split ikut terbaca sebagai drawdown (mis. ADRO Nov 2024).")
+st.caption("Harga belum disesuaikan dividen dan spin-off, sehingga keduanya ikut terbaca sebagai drawdown (mis. spin-off ADRO, Nov 2024).")

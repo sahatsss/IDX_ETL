@@ -7,7 +7,8 @@
 --
 -- Definisi: simple return = tutup / tutup_kemarin - 1 (lihat DECISIONS.md).
 -- "Kemarin" = baris sebelumnya (hari bursa), bukan hari kalender; hari libur tidak ada di tabel.
--- Harga mentah (auto_adjust=False): return di tanggal stock split / spin-off akan terdistorsi.
+-- Price return: Close yfinance sudah disesuaikan split, tidak disesuaikan dividen (DECISIONS.md #007).
+-- Return di tanggal spin-off / right issue akan terdistorsi.
 
 CREATE OR REPLACE VIEW v_return_harian AS
 WITH dasar AS (

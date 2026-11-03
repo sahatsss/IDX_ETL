@@ -1,7 +1,6 @@
 # Catatan Keputusan Desain
 
 Format: keputusan → alternatif yang dipertimbangkan → alasan → konsekuensi.
-Ini yang akan kamu baca ulang sebelum wawancara.
 
 ## 001 – Sumber data: yfinance
 - **Keputusan**: mengambil data OHLCV harian saham IDX dari yfinance (ticker berakhiran `.JK`).
@@ -14,7 +13,7 @@ Ini yang akan kamu baca ulang sebelum wawancara.
 - **Konsekuensi / risiko**:
   - Data **tidak resmi**: bisa ada tanggal hilang, nilai 0, atau koreksi data di kemudian hari.
   - Tidak ada SLA; jika Yahoo mengubah API, extract bisa gagal → dimitigasi dengan `log_etl` (status `gagal` + `pesan_error`).
-  - Harga disimpan **mentah** (`auto_adjust=False`, lihat #007), sehingga stock split/dividen tidak disesuaikan.
+  - Harga tidak disesuaikan dividen (`auto_adjust=False`; split sudah disesuaikan Yahoo, lihat #007).
   - Karena risiko kualitas ini, pipeline butuh lapisan validasi (#004).
 
 ## 002 – Primary key `harga_harian` = (kode, tanggal)
@@ -58,10 +57,10 @@ Ini yang akan kamu baca ulang sebelum wawancara.
   | `ohlc_tidak_konsisten` | buang + catat | high di bawah open/close (atau low di atas) mustahil secara definisi |
   | `volume_negatif` | buang + catat | volume tidak mungkin negatif (volume 0 tetap sah: saham tidak diperdagangkan) |
   | `duplikat` | simpan salinan pertama yang valid, buang sisanya | data tidak hilang, tapi tidak ada baris ganda |
-  | `lonjakan_ekstrem` | **simpan** + catat | bisa jadi nyata (stock split, corporate action), jadi tidak boleh dibuang otomatis |
+  | `lonjakan_ekstrem` | **simpan** + catat | bisa jadi nyata (spin-off, corporate action, patahan skala setelah split baru), jadi tidak boleh dibuang otomatis |
 
 - **Alternatif**:
-  - Buang semua yang bermasalah: database pasti bersih, tapi data nyata (mis. split) ikut hilang dan muncul "lubang" tanggal.
+  - Buang semua yang bermasalah: database pasti bersih, tapi data nyata (mis. spin-off) ikut hilang dan muncul "lubang" tanggal.
   - Muat semua, hanya catat: tidak ada data hilang, tapi data yang pasti salah ikut masuk ke analisis.
 - **Alasan**:
   - **Audit trail**: tidak ada data yang hilang diam-diam. Setiap baris yang dibuang punya jejak (run_id, kode, tanggal, aturan, keterangan),
@@ -119,13 +118,23 @@ Ini yang akan kamu baca ulang sebelum wawancara.
   Ini bentuk sederhana *dependency injection*.
 - **Konsekuensi**: `main.py` tidak perlu berubah karena nilai default tetap hari ini.
 
-## 007 – Harga disimpan mentah (`auto_adjust=False`)
-- **Keputusan**: menyimpan harga apa adanya dari bursa, tidak disesuaikan corporate action.
-- **Alternatif**: `auto_adjust=True` (harga historis disesuaikan untuk split/dividen).
-- **Alasan**: harga mentah adalah harga yang benar-benar terjadi di bursa pada hari itu, sehingga cocok dibandingkan dengan batas ARB/ARA.
-  Harga adjusted bisa berubah mundur setiap ada corporate action baru, sehingga upsert akan terus menimpa histori.
-- **Konsekuensi**: return dan drawdown di Fase 4 akan terdistorsi pada tanggal split, dan `lonjakan_ekstrem` akan menandainya.
-  Pertimbangkan menyimpan kolom adjusted close terpisah jika analisis return jangka panjang dibutuhkan.
+## 007 – Harga tanpa penyesuaian dividen (`auto_adjust=False`)
+- **Keputusan**: menyimpan kolom `Close` yfinance, bukan `Adj Close` / `auto_adjust=True`.
+- **Koreksi (3 Nov 2026)**: awalnya dikira `Close` = harga mentah bursa. Ternyata **`Close` Yahoo sudah disesuaikan untuk stock split**,
+  hanya **tidak** disesuaikan untuk dividen. Bukti: CUAN split 1:10 pada 15 Jul 2025, tapi di data tidak ada return −90% pada tanggal itu,
+  dan harga Jan 2024 tercatat ±820 (harga bursa saat itu ±8.200). Spin-off (ADRO → AADI, Nov 2024) tidak disesuaikan.
+- **Alternatif**: `auto_adjust=True` (OHLC disesuaikan split **dan** dividen).
+- **Alasan**:
+  - Tanpa penyesuaian dividen, perubahan harian tetap mendekati pergerakan harga di bursa, sehingga masuk akal dibandingkan dengan
+    batas ARA/ARB. Penyesuaian dividen mengubah semua harga historis sedikit setiap ada dividen baru.
+  - Return di sini adalah **price return** (tanpa dividen), bukan total return.
+- **Konsekuensi / risiko**:
+  - Return jangka panjang saham dengan dividen besar (mis. bank, PTBA, ITMG) **lebih rendah** dari total return sebenarnya.
+  - Spin-off / right issue tetap muncul sebagai lonjakan harga (mis. ADRO −24,8% pada 28–29 Nov 2024) dan ikut ke drawdown.
+  - **Split di masa depan**: Yahoo akan menyesuaikan seluruh histori, tapi run harian hanya memperbarui 7 hari terakhir. Baris lama di
+    database tetap di skala lama, sehingga muncul "patahan" harga pada batas 7 hari. Aturan `lonjakan_ekstrem` akan menandainya;
+    penanganannya: backfill ulang saham tersebut (`--start` dari awal data) agar seluruh histori kembali satu skala.
+  - Perbaikan berikutnya: simpan juga `Adj Close` di kolom terpisah untuk analisis total return.
 
 ## 008 – Query analitik disimpan sebagai VIEW
 - **Keputusan**: setiap file di `sql/analytics/` membuat view (`CREATE OR REPLACE VIEW v_...`), total 8 view dari 6 file.

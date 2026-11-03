@@ -23,7 +23,7 @@ def _unduh(kode_batch: list[str], mulai: date, akhir: date) -> pd.DataFrame:
         [f"{k}.JK" for k in kode_batch],
         start=mulai.isoformat(),
         end=(pd.Timestamp(akhir) + pd.Timedelta(days=1)).date().isoformat(),
-        auto_adjust=False,   # simpan harga mentah, lihat DECISIONS.md #007
+        auto_adjust=False,   # Close: sudah disesuaikan split, tidak disesuaikan dividen (DECISIONS.md #007)
         group_by="ticker",   # kolom MultiIndex: (ticker, field)
         threads=True,
         progress=False,

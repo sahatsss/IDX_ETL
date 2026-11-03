@@ -8,4 +8,3 @@ __pycache__/
 .pytest_cache/
 data/raw/
 .ipynb_checkpoints/
-CLAUDE.md

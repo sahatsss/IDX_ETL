@@ -10,7 +10,7 @@ Perlakuan per aturan (lihat DECISIONS.md #004):
 - BUANG + catat : harga_tidak_positif, ohlc_tidak_konsisten, volume_negatif, duplikat, tanggal_masa_depan
                   (datanya pasti salah, jadi tidak boleh masuk analisis)
 - SIMPAN + catat: lonjakan_ekstrem
-                  (bisa saja nyata, mis. stock split karena harga disimpan tanpa adjust).
+                  (bisa saja nyata, mis. spin-off, atau "patahan" skala setelah stock split baru; DECISIONS.md #007).
                   Batas ARA/ARB mengikuti periode aturan BEI yang berlaku di tanggal transaksi.
 
 Urutan aturan penting: baris yang sudah dibuang oleh aturan sebelumnya tidak diperiksa lagi,

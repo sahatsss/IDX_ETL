@@ -26,7 +26,7 @@ SELECT
 FROM puncak;
 
 -- 6b. Drawdown maksimum per saham, beserta tanggal puncak dan dasarnya.
---   Catatan: harga mentah (auto_adjust=False), jadi stock split / spin-off ikut terbaca sebagai drawdown.
+--   Catatan: Close yfinance sudah disesuaikan split, tapi tidak dividen; spin-off / right issue ikut terbaca sebagai drawdown.
 CREATE OR REPLACE VIEW v_drawdown_maksimum AS
 WITH terdalam AS (
     -- Satu baris per saham: hari dengan drawdown paling negatif (jika seri, ambil yang paling awal).

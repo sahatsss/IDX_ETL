@@ -16,5 +16,5 @@ halaman = st.navigation({
     ],
 })
 
-st.sidebar.caption("Sumber: yfinance (data tidak resmi), konstituen LQ45 periode Agu–Okt 2026. Harga belum disesuaikan corporate action.")
+st.sidebar.caption("Sumber: yfinance (data tidak resmi), konstituen LQ45 periode Agu–Okt 2026. Harga sudah disesuaikan stock split, belum disesuaikan dividen dan spin-off.")
 halaman.run()

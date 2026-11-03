@@ -72,5 +72,5 @@ fig.update_layout(height=800, xaxis_rangeslider_visible=False, barmode="overlay"
 fig.update_yaxes(tickformat=".0%", row=3, col=1)
 st.plotly_chart(fig, width="stretch")
 
-st.caption("Harga mentah (belum disesuaikan stock split / dividen / spin-off), sehingga lonjakan di tanggal "
-           "corporate action ikut terbaca sebagai pergerakan harga.")
+st.caption("Harga sudah disesuaikan stock split, tapi belum disesuaikan dividen dan spin-off, sehingga penurunan "
+           "di tanggal ex-dividen / spin-off ikut terbaca sebagai pergerakan harga.")
