@@ -12,6 +12,7 @@ dan cara membaca hasilnya.
 | `04_ranking_sektor.sql` | `v_ranking_sektor_bulanan` | Ranking return bulanan dalam sektor dan antar sektor |
 | `05_volume_spike.sql` | `v_volume_spike` | Hari dengan volume > 3x rata-rata 20 hari sebelumnya |
 | `06_drawdown.sql` | `v_drawdown`, `v_drawdown_maksimum` | Drawdown harian dan drawdown maksimum per saham |
+| `07_pasar_harian.sql` | `v_pasar_harian` | Median return dan jumlah saham naik/turun per hari |
 
 ## Membuat / memperbarui view
 Jalankan berurutan (file 03 dan 05 memakai `v_return_harian` dari file 01):

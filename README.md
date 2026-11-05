@@ -6,14 +6,14 @@ dianalisis dengan **SQL window function**, lalu disajikan di dashboard Streamlit
 
 **Dashboard:** https://idxetl-7fmnwav7bb3xc4i4fpkirz.streamlit.app
 
-![Detail saham: candlestick, MA20/MA50, crossover, volume spike, drawdown](docs/img/detail_saham.jpg)
+![Ringkasan pasar: kondisi 45 saham dan median return harian](docs/img/ringkasan.jpg)
 
 | | |
 |---|---|
 | Cakupan | 45 saham LQ45 · Okt 2023 – sekarang · ±32.800 baris harga harian |
 | Kontrol data | 6 aturan validasi, setiap pelanggaran tercatat dengan `run_id` (audit trail) |
-| Analitik | 8 view SQL: return, moving average, volatilitas, ranking sektor, volume spike, drawdown |
-| Kualitas kode | 36 test (pytest), keputusan desain tercatat di [DECISIONS.md](DECISIONS.md) (#001–#014) |
+| Analitik | 9 view SQL: return, moving average, volatilitas, ranking sektor, volume spike, drawdown, pergerakan pasar harian |
+| Kualitas kode | 51 test (pytest), keputusan desain tercatat di [DECISIONS.md](DECISIONS.md) (#001–#015) |
 | Stack | Python 3.12 · pandas · yfinance · SQLAlchemy + psycopg2 · PostgreSQL 16 · Streamlit + Plotly · Docker · GitHub Actions · Neon |
 
 ## Arsitektur
@@ -26,7 +26,7 @@ flowchart LR
     VA -->|pelanggaran| DQ[(data_quality_issue)]
     LO --> HH[(harga_harian)]
     MAIN[main.py] -. mencatat setiap run .-> LOG[(log_etl)]
-    HH --> VW[8 view<br/>sql/analytics]
+    HH --> VW[9 view<br/>sql/analytics]
     VW --> DB[Dashboard<br/>Streamlit]
     LOG --> DB
     DQ --> DB
@@ -37,6 +37,8 @@ flowchart LR
   Koneksi dipilih lewat `DATABASE_URL`; tanpa variabel itu, pipeline memakai database lokal.
 - **Jadwal**: GitHub Actions menjalankan test lebih dulu, lalu `setup_db` (sinkronisasi skema + view) dan ETL 7 hari terakhir.
 - **Dashboard**: Streamlit Community Cloud, hanya membaca view; semua perhitungan ada di SQL.
+
+![Detail saham: candlestick, MA20/MA50, crossover, lonjakan volume, drawdown](docs/img/detail_saham.jpg)
 
 ## Yang membuat pipeline ini bisa dipercaya
 
@@ -97,12 +99,12 @@ src/idx_pipeline/
   setup_db.py    # buat/perbarui tabel + view di database tujuan (idempotent)
   config.py      # DATABASE_URL atau POSTGRES_*
 sql/schema/      # tabel: emiten, harga_harian, log_etl, data_quality_issue
-sql/analytics/   # 6 file → 8 view analitik
-dashboard/       # Streamlit: app.py + 6 halaman
-tests/           # 36 test: validasi, extract (tanpa internet), config
+sql/analytics/   # 7 file → 9 view analitik
+dashboard/       # Streamlit: app.py, ui.py (komponen), fmt.py (format Indonesia), 6 halaman
+tests/           # 51 test: validasi, extract (tanpa internet), config, format
 config/tickers.csv
 .github/workflows/etl.yml
-DECISIONS.md     # 14 keputusan desain: alternatif, alasan, konsekuensi
+DECISIONS.md     # 15 keputusan desain: alternatif, alasan, konsekuensi
 ```
 
 ## Menjalankan secara lokal

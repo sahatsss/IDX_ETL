@@ -1,7 +1,13 @@
-"""Dashboard saham IDX (LQ45). Jalankan: streamlit run dashboard/app.py"""
+"""Dashboard saham IDX (LQ45). Jalankan: python -m streamlit run dashboard/app.py"""
+from pathlib import Path
+
 import streamlit as st
 
-st.set_page_config(page_title="IDX LQ45 Dashboard", page_icon=":material/monitoring:", layout="wide")
+import ui
+
+st.set_page_config(page_title="IDX LQ45", page_icon=":material/monitoring:", layout="wide")
+st.logo(str(Path(__file__).parent / "assets" / "logo.svg"), size="large")
+ui.pasang_gaya()
 
 halaman = st.navigation({
     "Analisis": [
@@ -9,12 +15,12 @@ halaman = st.navigation({
         st.Page("halaman/detail_saham.py", title="Detail saham", icon=":material/candlestick_chart:"),
         st.Page("halaman/sektor.py", title="Sektor", icon=":material/grid_view:"),
         st.Page("halaman/risiko.py", title="Risiko", icon=":material/trending_down:"),
-        st.Page("halaman/volume_spike.py", title="Volume spike", icon=":material/bar_chart:"),
+        st.Page("halaman/volume_spike.py", title="Lonjakan volume", icon=":material/bar_chart:"),
     ],
     "Kontrol": [
         st.Page("halaman/kualitas_data.py", title="Kualitas data", icon=":material/fact_check:"),
     ],
 })
 
-st.sidebar.caption("Sumber: yfinance (data tidak resmi), konstituen LQ45 periode Agu–Okt 2026. Harga sudah disesuaikan stock split, belum disesuaikan dividen dan spin-off.")
+st.sidebar.caption("Sumber: yfinance (tidak resmi). Konstituen LQ45 Agu–Okt 2026. Harga belum termasuk dividen.")
 halaman.run()

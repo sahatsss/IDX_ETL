@@ -74,7 +74,3 @@ def daftar_emiten() -> pd.DataFrame:
 def label_emiten(df_emiten: pd.DataFrame) -> dict[str, str]:
     """{kode: 'KODE · Nama'} untuk selectbox."""
     return {r.kode: f"{r.kode} · {r.nama or ''}" for r in df_emiten.itertuples()}
-
-
-def persen(x: float, desimal: int = 1) -> str:
-    return "–" if pd.isna(x) else f"{x * 100:+.{desimal}f}%"

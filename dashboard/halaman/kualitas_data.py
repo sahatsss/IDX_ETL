@@ -1,12 +1,18 @@
 """Kualitas data: riwayat run ETL (log_etl) dan isu validasi (data_quality_issue)."""
-import plotly.express as px
+import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
+import fmt
+import ui
 from db import query
 
-st.title("Kualitas data dan audit trail")
-st.caption("Setiap run ETL tercatat di log_etl; setiap pelanggaran aturan validasi tercatat di data_quality_issue "
-           "beserta run_id-nya, sehingga data yang dibuang atau ditandai selalu bisa ditelusuri.")
+
+def ke_wib(kolom: pd.Series) -> pd.Series:
+    return pd.to_datetime(kolom, utc=True).dt.tz_convert("Asia/Jakarta").dt.tz_localize(None)
+
+
+ui.kepala("Kualitas data", "Bukti setiap run ETL dan setiap pelanggaran aturan bisa ditelusuri")
 
 run = query("""
     SELECT id AS run_id, mulai, selesai, status, tanggal_awal, tanggal_akhir,
@@ -15,54 +21,71 @@ run = query("""
     FROM log_etl ORDER BY id DESC
 """)
 isu = query("""
-    SELECT i.run_id, i.kode, i.tanggal, i.aturan, i.keterangan, i.dicatat_pada
-    FROM data_quality_issue i ORDER BY i.id DESC
+    SELECT run_id, kode, tanggal, aturan, keterangan, dicatat_pada
+    FROM data_quality_issue ORDER BY id DESC
 """)
 
-terakhir = run.iloc[0] if not run.empty else None
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Total run", len(run))
-k2.metric("Run gagal", int((run["status"] == "gagal").sum()))
-k3.metric("Status run terakhir", "–" if terakhir is None else terakhir["status"])
-k4.metric("Total isu tercatat", len(isu))
+if run.empty:
+    st.info("Belum ada run ETL yang tercatat.")
+    st.stop()
 
-st.subheader("Riwayat run ETL")
-st.dataframe(
-    run,
-    column_config={
-        "run_id": st.column_config.NumberColumn("Run"),
-        "mulai": st.column_config.DatetimeColumn("Mulai (UTC)", format="DD MMM YYYY HH:mm"),
-        "selesai": st.column_config.DatetimeColumn("Selesai (UTC)", format="DD MMM YYYY HH:mm"),
-        "status": "Status",
-        "tanggal_awal": st.column_config.DateColumn("Data dari", format="DD MMM YYYY"),
-        "tanggal_akhir": st.column_config.DateColumn("Data s.d.", format="DD MMM YYYY"),
-        "baris_diambil": st.column_config.NumberColumn("Diambil", format="%,d"),
-        "baris_dimuat": st.column_config.NumberColumn("Dimuat", format="%,d"),
-        "jumlah_isu": st.column_config.NumberColumn("Isu"),
-        "pesan_error": "Pesan error",
-        "durasi_detik": st.column_config.NumberColumn("Durasi", format="%.1f s"),
-    },
-    hide_index=True,
-)
+terakhir = run.iloc[0]
+gagal = int((run["status"] == "gagal").sum())
+ui.kotak_metrik([
+    ui.metrik("Total run", fmt.angka(len(run)), f"Terakhir {fmt.tanggal(ke_wib(run['mulai']).iloc[0])}"),
+    ui.metrik("Run gagal", fmt.angka(gagal), "Tidak ada" if gagal == 0 else "Perlu dicek", kelas_nilai="idx-turun" if gagal else ""),
+    ui.metrik("Status terakhir", str(terakhir.status).capitalize(), f"{fmt.angka(terakhir.baris_dimuat)} baris dimuat",
+              kelas_nilai={"sukses": "idx-naik", "gagal": "idx-turun"}.get(terakhir.status, "")),
+    ui.metrik("Isu tercatat", fmt.angka(len(isu)), "Semua run",
+              "Jumlah pelanggaran aturan validasi. Isu yang sama bisa tercatat lagi di run berikutnya."),
+])
+st.space("small")
 
-st.subheader("Isu validasi")
-if isu.empty:
-    st.success("Belum ada isu validasi yang tercatat. Semua baris dari semua run lolos keenam aturan.")
-else:
-    per_aturan = isu.groupby("aturan").size().reset_index(name="jumlah").sort_values("jumlah")
-    fig = px.bar(per_aturan, x="jumlah", y="aturan", orientation="h", labels={"aturan": "", "jumlah": "Jumlah isu"})
-    fig.update_layout(height=260, margin=dict(l=0, r=0, t=10, b=0))
-    st.plotly_chart(fig, width="stretch")
-    st.dataframe(isu, hide_index=True)
+ui.bagian("Riwayat run ETL", "Waktu dalam WIB")
+tampil = run.assign(mulai=ke_wib(run["mulai"]), selesai=ke_wib(run["selesai"]), pesan_error=run["pesan_error"].fillna(fmt.KOSONG))
+ui.tabel(tampil, {
+    "run_id": ("Run", None),
+    "mulai": ("Mulai", fmt.tanggal_waktu),
+    "status": ("Status", None),
+    "tanggal_awal": ("Data dari", fmt.tanggal),
+    "tanggal_akhir": ("Data sampai", fmt.tanggal),
+    "baris_diambil": ("Diambil", fmt.angka),
+    "baris_dimuat": ("Dimuat", fmt.angka),
+    "jumlah_isu": ("Isu", fmt.angka),
+    "durasi_detik": ("Durasi", lambda x: f"{fmt.angka(x, 1)} dtk"),
+    "pesan_error": ("Pesan error", None),
+}, tinggi=320 if len(tampil) > 8 else None)
 
-with st.expander("Aturan validasi yang berjalan di setiap run"):
-    st.markdown("""
-| Aturan | Perlakuan |
-|---|---|
-| `tanggal_masa_depan` | dibuang + dicatat |
-| `harga_tidak_positif` | dibuang + dicatat |
-| `ohlc_tidak_konsisten` | dibuang + dicatat |
-| `volume_negatif` | dibuang + dicatat |
-| `duplikat` | salinan pertama disimpan, sisanya dibuang + dicatat |
-| `lonjakan_ekstrem` | **disimpan** + dicatat (batas ARA/ARB BEI per periode) |
-""")
+st.space("small")
+kiri, kanan = st.columns([3, 2], gap="large")
+with kiri:
+    ui.bagian("Isu validasi")
+    if isu.empty:
+        st.success("Belum ada isu. Semua baris dari semua run lolos keenam aturan.")
+    else:
+        per_aturan = isu.groupby("aturan").size().sort_values()
+        fig = go.Figure(go.Bar(x=per_aturan.values, y=per_aturan.index, orientation="h", marker_color=ui.AKSEN, marker_line_width=0,
+                               text=per_aturan.values, textposition="outside", cliponaxis=False,
+                               hovertemplate="<b>%{y}</b><br>%{x} isu<extra></extra>"))
+        ui.rapikan_grafik(fig, 60 + 34 * len(per_aturan)).update_layout(bargap=0.35)
+        fig.update_xaxes(visible=False)
+        fig.update_yaxes(showgrid=False)
+        ui.tampilkan_grafik(fig)
+        ui.tabel(isu.assign(dicatat_pada=ke_wib(isu["dicatat_pada"])), {
+            "run_id": ("Run", None),
+            "tanggal": ("Tanggal data", fmt.tanggal),
+            "kode": ("Kode", None),
+            "aturan": ("Aturan", None),
+            "keterangan": ("Keterangan", None),
+        }, tinggi=320)
+with kanan:
+    ui.bagian("Aturan validasi di setiap run")
+    st.html(
+        '<table class="idx-tabel"><tr><th>Aturan</th><th>Perlakuan</th></tr>'
+        "<tr><td>Tanggal masa depan</td><td>Dibuang, dicatat</td></tr>"
+        "<tr><td>Harga tidak positif atau kosong</td><td>Dibuang, dicatat</td></tr>"
+        "<tr><td>OHLC tidak konsisten</td><td>Dibuang, dicatat</td></tr>"
+        "<tr><td>Volume negatif</td><td>Dibuang, dicatat</td></tr>"
+        "<tr><td>Duplikat</td><td>Salinan pertama disimpan</td></tr>"
+        "<tr><td>Lonjakan melebihi ARA/ARB</td><td>Disimpan, dicatat</td></tr></table>"
+    )

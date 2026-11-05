@@ -272,3 +272,24 @@ Format: keputusan → alternatif yang dipertimbangkan → alasan → konsekuensi
   - Aplikasi memakai URL **pooled** (PgBouncer) dari Neon, sesuai rekomendasi Neon untuk trafik aplikasi.
   - Hasil pembangunan ulang di Neon (3 Nov 2026): `setup_db` membuat 4 tabel + 8 view; backfill 32.836 baris (45 saham,
     2 Okt 2023 – 3 Nov 2026) dalam 10 detik, 0 isu; run harian dijalankan 2× dan jumlah baris tetap 32.836 (idempotent).
+
+## 015 – Desain dashboard: tema terang, satu aksen, teks metrik singkat
+- **Keputusan**:
+  - Tema terang netral dengan satu warna aksen (biru), font IBM Plex Sans; hijau dan merah hanya untuk arah harga. Diatur lewat
+    `.streamlit/config.toml`, CSS tambahan hanya untuk komponen milik sendiri (kelas `idx-*`).
+  - Seluruh teks dan format angka berbahasa Indonesia (`5.025`, `−4,47%`, `Mei 26`), termasuk grafik.
+  - **Aturan kotak metrik**: label dan keterangan maksimal 2–3 kata dalam satu baris; definisi disimpan di ikon (i).
+  - Hari **ekstrem** pada grafik Ringkasan: |median return| ≥ 4%.
+- **Alternatif**:
+  - `st.metric` bawaan: lebih sederhana, tapi keterangannya tampil sebagai pil delta dan tidak bisa membentuk satu baris menyatu.
+  - Bahasa Inggris: istilah lebih ringkas, tapi masalah aslinya kepadatan teks, bukan bahasa. Mencampur dua bahasa justru paling buruk.
+  - Warna per sektor pada scatter Risiko: 9 warna bersaing; diganti titik netral dengan label hanya pada saham yang menonjol.
+- **Alasan**:
+  - Batas 4% diambil dari data: hanya 14 dari 735 hari bursa (±2%), sehingga penekanannya bermakna.
+  - Tabel memakai `Styler`: tampilan berformat Indonesia, tapi pengurutan kolom tetap memakai nilai aslinya.
+  - Halaman Sektor dibuka pada bulan penuh terakhir, karena bulan berjalan belum final dan bisa menyesatkan.
+  - Tambahan view `v_pasar_harian`, agar dashboard tetap hanya membaca hasil SQL (#008).
+- **Konsekuensi**:
+  - Label bulan grafik dibuat manual (`ui.sumbu_tanggal`), karena label bawaan Plotly selalu berbahasa Inggris.
+  - Judul sumbu waktu pada tooltip gabungan Detail saham memakai format `dd/mm/yyyy`, kecuali di tanggal yang tepat berlabel bulan.
+  - Satu selector internal Streamlit dipakai untuk jarak atas halaman (`stMainBlockContainer`); jika berubah di versi baru, yang hilang hanya jaraknya.
