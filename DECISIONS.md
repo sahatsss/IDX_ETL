@@ -314,3 +314,17 @@ Format: keputusan → alternatif yang dipertimbangkan → alasan → konsekuensi
     harga penutupan.
   - Test otomatis tidak lagi berjalan sebelum ETL seperti di workflow GitHub Actions; jalankan `pytest` sebelum push.
   - Log ada di `logs/etl.log` (lokal, tidak masuk repo) dan tetap di tabel `log_etl`; riwayat tugas terlihat di Task Scheduler.
+
+## 017 – Penjadwal utama kembali ke GitHub Actions
+- **Keputusan**: setelah urusan pembayaran GitHub selesai, GitHub Actions menjadi penjadwal ETL utama. Tugas Task Scheduler
+  "IDX LQ45 ETL" (#016) **dinonaktifkan, tidak dihapus**, dan `scripts/etl_terjadwal.cmd` tetap di repo sebagai cadangan.
+- **Alternatif**: menjalankan keduanya sebagai cadangan satu sama lain. Ditolak: data tetap benar karena upsert (#003),
+  tapi `log_etl` mendapat dua run per hari (membingungkan audit) dan Yahoo menerima permintaan dua kali lipat.
+- **Alasan**: tidak bergantung pada laptop menyala, dan test selalu dijalankan sebelum ETL.
+- **Bukti sebelum beralih**: run pertama gagal karena secret `DATABASE_URL` belum terbaca, sehingga `config.database_url()`
+  jatuh ke `localhost`. Setelah secret dipasang di *Repository secrets*, run #9 sukses dan tercatat di Neon sebagai run 6
+  (10 Nov 2026, 270 baris, 0 isu). Baru setelah itu Task Scheduler dinonaktifkan.
+- **Konsekuensi**:
+  - Workflow kini diawali langkah yang memeriksa secret: secret kosong langsung gagal dengan pesan jelas, bukan error koneksi.
+  - Jika Actions gagal beberapa hari (mis. Yahoo memblokir IP GitHub), aktifkan lagi tugas Task Scheduler atau jalankan
+    `python -m idx_pipeline.main --env-file .env.neon --start <tanggal>` dari laptop.
