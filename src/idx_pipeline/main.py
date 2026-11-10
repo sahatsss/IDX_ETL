@@ -1,9 +1,11 @@
-"""CLI: python -m idx_pipeline.main [--start YYYY-MM-DD] [--end YYYY-MM-DD]"""
+"""CLI: python -m idx_pipeline.main [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--env-file FILE]"""
 import argparse
 import logging
 from datetime import date, timedelta
+from pathlib import Path
 
 import pandas as pd
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
 from . import config, extract, load, validate
@@ -16,6 +18,8 @@ def parse_args():
     p = argparse.ArgumentParser(description="ETL harga saham IDX ke PostgreSQL")
     p.add_argument("--start", type=date.fromisoformat, default=date.today() - timedelta(days=7))
     p.add_argument("--end", type=date.fromisoformat, default=date.today())
+    p.add_argument("--env-file", type=Path,
+                   help="file env tambahan yang menimpa .env, mis. .env.neon untuk menulis ke database cloud")
     return p.parse_args()
 
 
@@ -42,4 +46,9 @@ def run(mulai: date, akhir: date) -> None:
 
 if __name__ == "__main__":
     a = parse_args()
+    if a.env_file:
+        if not a.env_file.is_file():
+            raise SystemExit(f"File env tidak ditemukan: {a.env_file}")
+        # override=True: nilai di file ini menang atas .env, sehingga DATABASE_URL mengarah ke database tujuan.
+        load_dotenv(a.env_file, override=True)
     run(a.start, a.end)

@@ -13,7 +13,7 @@ dianalisis dengan **SQL window function**, lalu disajikan di dashboard Streamlit
 | Cakupan | 45 saham LQ45 · Okt 2023 – sekarang · ±32.800 baris harga harian |
 | Kontrol data | 6 aturan validasi, setiap pelanggaran tercatat dengan `run_id` (audit trail) |
 | Analitik | 9 view SQL: return, moving average, volatilitas, ranking sektor, volume spike, drawdown, pergerakan pasar harian |
-| Kualitas kode | 51 test (pytest), keputusan desain tercatat di [DECISIONS.md](DECISIONS.md) (#001–#015) |
+| Kualitas kode | 51 test (pytest), keputusan desain tercatat di [DECISIONS.md](DECISIONS.md) (#001–#016) |
 | Stack | Python 3.12 · pandas · yfinance · SQLAlchemy + psycopg2 · PostgreSQL 16 · Streamlit + Plotly · Docker · GitHub Actions · Neon |
 
 ## Arsitektur
@@ -30,12 +30,13 @@ flowchart LR
     VW --> DB[Dashboard<br/>Streamlit]
     LOG --> DB
     DQ --> DB
-    GA[GitHub Actions<br/>Sen–Jum 17:00 WIB] -. menjalankan .-> MAIN
+    GA[Penjadwal<br/>Sen–Jum 17:00 WIB] -. menjalankan .-> MAIN
 ```
 
 - **Database**: PostgreSQL 16 di Docker untuk pengembangan, **Neon** (PostgreSQL serverless) untuk produksi.
   Koneksi dipilih lewat `DATABASE_URL`; tanpa variabel itu, pipeline memakai database lokal.
-- **Jadwal**: GitHub Actions menjalankan test lebih dulu, lalu `setup_db` (sinkronisasi skema + view) dan ETL 7 hari terakhir.
+- **Jadwal**: Windows Task Scheduler menjalankan ETL 7 hari terakhir setiap hari bursa; jika laptop mati pada jamnya,
+  run menyusul saat laptop menyala. Workflow GitHub Actions (test, `setup_db`, lalu ETL) tersedia sebagai alternatif.
 - **Dashboard**: Streamlit Community Cloud, hanya membaca view; semua perhitungan ada di SQL.
 
 ![Detail saham: candlestick, MA20/MA50, crossover, lonjakan volume, drawdown](docs/img/detail_saham.jpg)
@@ -104,7 +105,7 @@ dashboard/       # Streamlit: app.py, ui.py (komponen), fmt.py (format Indonesia
 tests/           # 51 test: validasi, extract (tanpa internet), config, format
 config/tickers.csv
 .github/workflows/etl.yml
-DECISIONS.md     # 15 keputusan desain: alternatif, alasan, konsekuensi
+DECISIONS.md     # 16 keputusan desain: alternatif, alasan, konsekuensi
 ```
 
 ## Menjalankan secara lokal
@@ -125,9 +126,15 @@ pytest -q
 
 1. **Neon**: buat proyek (region Singapore) dan salin connection string *pooled*.
 2. **Isi database dari nol**: set `DATABASE_URL`, jalankan `setup_db` lalu `main --start 2023-10-01`.
-3. **GitHub Actions**: tambahkan secret `DATABASE_URL`; workflow `ETL harian` berjalan Senin–Jumat 17:00 WIB
-   dan bisa dijalankan manual dengan tanggal mulai opsional.
+3. **Jadwal ETL** (pilih salah satu; keduanya menjalankan ETL 7 hari terakhir Senin–Jumat 17:00 WIB):
+   - **Windows Task Scheduler** (yang dipakai saat ini): simpan connection string di `.env.neon`, lalu daftarkan
+     `scripts\etl_terjadwal.cmd <path python.exe>` sebagai tugas terjadwal dengan opsi *jalankan secepatnya jika jadwal terlewat*.
+     Log tersimpan di `logs/etl.log`.
+   - **GitHub Actions**: tambahkan secret `DATABASE_URL`; workflow `ETL harian` menjalankan test lalu ETL, dan bisa
+     dijalankan manual dengan tanggal mulai opsional.
 4. **Streamlit Community Cloud**: main file `dashboard/app.py`, secret `DATABASE_URL = "..."`.
+
+ETL ke database tertentu dari laptop: `python -m idx_pipeline.main --env-file .env.neon`.
 
 ## Keterbatasan dan rencana perbaikan
 

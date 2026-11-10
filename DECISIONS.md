@@ -293,3 +293,24 @@ Format: keputusan → alternatif yang dipertimbangkan → alasan → konsekuensi
   - Label bulan grafik dibuat manual (`ui.sumbu_tanggal`), karena label bawaan Plotly selalu berbahasa Inggris.
   - Judul sumbu waktu pada tooltip gabungan Detail saham memakai format `dd/mm/yyyy`, kecuali di tanggal yang tepat berlabel bulan.
   - Satu selector internal Streamlit dipakai untuk jarak atas halaman (`stMainBlockContainer`); jika berubah di versi baru, yang hilang hanya jaraknya.
+
+## 016 – Penjadwal ETL: Windows Task Scheduler
+- **Keputusan**: ETL ke Neon dijalankan Windows Task Scheduler di laptop, Senin–Jumat 17:00 WIB, lewat `scripts/etl_terjadwal.cmd`
+  yang memanggil `python -m idx_pipeline.main --env-file .env.neon`. Opsi tugas: jalankan secepatnya bila jadwal terlewat,
+  hanya jika ada jaringan, maksimal 30 menit, tidak menjalankan dua instance bersamaan.
+- **Latar belakang**: GitHub Actions (#014) tidak bisa dipakai karena akun GitHub terkunci masalah pembayaran: bank memblokir transaksi ke GitHub, sehingga otorisasi kartu selalu gagal.
+  Workflow-nya tetap disimpan di repo dan bisa diaktifkan lagi tanpa perubahan kode.
+- **Alternatif**:
+  - Tombol "Perbarui data" di dashboard: tidak butuh laptop, tapi tetap manual dan perlu proteksi agar tidak dipicu sembarang orang.
+  - Layanan cron cloud lain (Render, Cloud Run, PythonAnywhere): umumnya butuh kartu, atau versi gratisnya membatasi akses
+    internet keluar (Yahoo / port PostgreSQL).
+  - Membuat akun GitHub lain untuk menghindari kunci: menyiasati pembatasan penyedia, tidak dipilih.
+- **Alasan**: gratis, bisa dipakai hari itu juga, dan memakai kode ETL yang sama persis. Script `.cmd` dipilih, bukan `.ps1`,
+  agar tidak bergantung pada pengaturan *execution policy* PowerShell.
+- **Konsekuensi / risiko**:
+  - Bergantung pada laptop menyala. Karena tiap run mengambil 7 hari dan memakai upsert (#003), hari yang terlewat terisi otomatis
+    selama laptop menyala minimal sekali seminggu; lebih lama dari itu perlu `--start` manual.
+  - Run di luar jam pasar (mis. saat uji coba siang hari) bisa memuat harga sementara hari itu; run berikutnya menimpanya dengan
+    harga penutupan.
+  - Test otomatis tidak lagi berjalan sebelum ETL seperti di workflow GitHub Actions; jalankan `pytest` sebelum push.
+  - Log ada di `logs/etl.log` (lokal, tidak masuk repo) dan tetap di tabel `log_etl`; riwayat tugas terlihat di Task Scheduler.
